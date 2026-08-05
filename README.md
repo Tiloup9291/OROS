@@ -2,7 +2,7 @@
 ## OROS' Real-time Operating System (OROS is Real-time Operating System)
 
 **A hard real-time, preemptive, bare-metal AArch64 open-source operating system for ARMv8-A / Rockchip RK3328.**
-**Initial design done for Orange Pi R1 Plus LTS**
+**Initial design done for Orange Pi R1 Plus LTS.**
 
 OROS is a from-scratch, hard real-time operating system targeting the ARMv8-A (AArch64) architecture. It runs entirely in **EL1**, is **completely independent of Linux** (no glibc, no `linux/*.h`, no Linux syscalls), and is built with a bare-metal GCC toolchain and newlib. The system implements a **critically-partitioned SMP** model across the four Cortex-A53 cores, a **PLC-style cyclic execution engine** for hard real-time tasks, and a full industrial feature set including an **EtherCAT master**, **TCP/IP + SSH**, **FAT32**, and **USB host** support.
 
@@ -19,7 +19,7 @@ OROS is a from-scratch, hard real-time operating system targeting the ARMv8-A (A
 - [Running on QEMU](#running-on-qemu)
 - [Running on Hardware](#running-on-hardware)
 - [Documentation](#documentation)
-- [Project Status roadmap](#project-status-roadmap)
+- [Project Status Roadmap](#project-status-roadmap)
 - [License](#license)
 
 ---
@@ -254,7 +254,7 @@ bootm 0x00200000
 
 ---
 
-## Project Status roadmap
+## Project Status Roadmap
 
 All phases **0 → 8** are **validated on hardware** (board). The actual initial build is complete.
 Order of development phases done and tested.
