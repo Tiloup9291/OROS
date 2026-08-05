@@ -4,13 +4,15 @@
 **A hard real-time, preemptive, bare-metal AArch64 open-source operating system for ARMv8-A / Rockchip RK3328.**
 **Initial design done for Orange Pi R1 Plus LTS.**
 
-OROS is a from-scratch, hard real-time operating system targeting the ARMv8-A (AArch64) architecture. It runs entirely in **EL1**, is **completely independent of Linux** (no glibc, no `linux/*.h`, no Linux syscalls), and is built with a bare-metal GCC toolchain and newlib. The system implements a **critically-partitioned SMP** model across the four Cortex-A53 cores, a **PLC-style cyclic execution engine** for hard real-time tasks, and a full industrial feature set including an **EtherCAT master**, **TCP/IP + SSH**, **FAT32**, and **USB host** support.
+OROS is a from-scratch operating system kernel and hardware stack integrating selected open-source industrial components targeting the ARMv8-A (AArch64) architecture. It runs entirely in **EL1**, is **independent of Linux** (no glibc, no `linux/*.h`, no Linux syscalls), and is built with a bare-metal GCC toolchain and newlib. The system implements a **critically-partitioned SMP** model across the four Cortex-A53 cores, a **PLC-style cyclic execution engine** for hard real-time tasks, and a full industrial feature set including an **EtherCAT master**, **TCP/IP + SSH**, **FAT32**, and **USB host** support.
 
 ---
 
 ## Table of Contents
 
 - [Overview](#overview)
+- [Why OROS?](#why-oros)
+- [Project Scope](#project-scope)
 - [Key Features](#key-features)
 - [Architecture](#architecture)
 - [Hardware Target](#hardware-target)
@@ -26,11 +28,38 @@ OROS is a from-scratch, hard real-time operating system targeting the ARMv8-A (A
 
 ## Overview
 
-OROS is a hard real-time operating system designed for deterministic, industrial-grade control applications. It is written in C (C11), compiled with GCC, and runs bare-metal on the Rockchip RK3328 SoC. The design philosophy is **"zero Linux"**: the entire kernel, drivers, and services are implemented from scratch, with only newlib providing the standard C library (linked through custom bare-metal stubs). No OS blobs or heavy background services. It comes to do what you want it to do, point. Of this fact, the sources and the API make it easy to expand the system as you need.
+OROS is a hard real-time operating system designed for deterministic, industrial-grade control applications. It is written in C (C11), compiled with GCC, and runs bare-metal on the Rockchip RK3328 SoC. The design philosophy is a fully independent bare-metal software stack: the entire kernel, drivers, and services are implemented from scratch, with only newlib providing the standard C library (linked through custom bare-metal stubs). No hidden runtime services or Linux-based components are involved. The system is intentionally minimal: no background services, no hidden policies, and no unnecessary abstractions between the application and the hardware. Because of this design, the source code and APIs remain simple to understand and extend according to application requirements.
 
-The system is organized around a **critically-partitioned SMP** architecture: each of the four Cortex-A53 cores is statically assigned a scheduling partition with a fixed criticality class, strict affinity, and no migration. This isolates hard real-time workloads from I/O and best-effort traffic, guaranteeing bounded worst-case execution times (WCET).
+The system is organized around a **critically-partitioned SMP** architecture: each of the four Cortex-A53 cores is statically assigned a scheduling partition with a fixed scheduling role, strict affinity, and no migration. OROS uses SMP hardware initialization, but scheduling is intentionally partitioned and non-migrating, providing deterministic behavior similar to statically partitioned AMP systems, while using SMP hardware initialization. This isolates hard real-time workloads from I/O and best-effort traffic, providing deterministic execution and enabling bounded WCET analysis for hard real-time workloads.
 
-The actual state feature set includes a **home-grown EtherCAT master** (API-compatible with EtherLab IgH 1.6.8), a **TCP/IP stack (lwIP)** with **SSH (wolfSSH/wolfSSL)**, a **unified shell** available over UART, telnet, and SSH, **FAT32** file system support, and a full **USB host** stack (xHCI/EHCI/OHCI) with USB-Ethernet and HID keyboard drivers.
+The initial feature set includes a **modified EtherLab EtherCAT Master integration** (API-compatible with EtherLab IgH 1.6.8), a **TCP/IP stack (lwIP)** with **SSH (wolfSSH/wolfSSL)**, a **unified shell** available over UART, telnet, and SSH, **FAT32** file system support, and a full **USB host** stack (xHCI/EHCI/OHCI) with USB-Ethernet and HID keyboard drivers.
+
+---
+
+## Why OROS?
+
+Existing RTOS solutions provide excellent portability and ecosystem support.
+OROS focuses on a different goal: maximum determinism through a fully
+controlled execution environment on a fixed industrial platform. OROS is designed for hard real-time control applications where timing determinism and measurable latency are primary requirements.
+
+Design choices:
+- no dynamic scheduling migration
+- no Linux dependency
+- static system composition
+- direct hardware ownership
+- measurable execution behavior
+
+
+---
+
+## Project Scope
+
+OROS is a research and engineering real-time operating system targeting
+deterministic industrial control platforms.
+
+It is not intended to replace general-purpose operating systems.
+The architecture prioritizes timing determinism, static configuration,
+and direct hardware control over portability and dynamic resource management.
 
 ---
 
@@ -39,13 +68,13 @@ The actual state feature set includes a **home-grown EtherCAT master** (API-comp
 - **Hard real-time, preemptive, bare-metal AArch64 (ARMv8-A)** running in EL1.
 - **"Zero Linux"** — no glibc, no `linux/*.h`, no Linux syscalls; only custom newlib stubs.
 - **Critically-partitioned SMP**: 4 cores, each with a dedicated scheduling partition and strict affinity:
-  - **Core 0** — `RT_HARD`: dedicated **EtherCAT master** (permanent, polling, quasi-tickless).
-  - **Core 1** — `RT_HARD`: critical PLC tasks (WCET guaranteed).
+  - **Core 0** — `RT_HARD`: dedicated **EtherCAT master** (permanent cyclic task, timer-driven, no scheduler tick dependency).
+  - **Core 1** — `RT_HARD`: critical PLC tasks (WCET-oriented execution model).
   - **Core 2** — `IO_SOFT`: USB, USB-Ethernet, lwIP, SSH, shell, logs.
   - **Core 3** — `RT_SOFT`: soft real-time periodic tasks.
 - **PLC-style cyclic execution engine**: fixed-period scan cycle, run-to-completion, overrun detection.
 - **Lock-free inter-core logging**: per-core ring buffers drained by Core 2.
-- **EtherCAT master** (home-grown, `ecrt_*` API compatible with IgH 1.6.8): ESM INIT→PREOP→SAFEOP→OP, cyclic PDO (LRW), SII/EEPROM SyncManager configuration.
+- **EtherCAT master** ( Modified derivative work based on EtherLab EtherCAT Master 1.6.8, `ecrt_*` API compatible with IgH 1.6.8): ESM INIT→PREOP→SAFEOP→OP, cyclic PDO (LRW), SII/EEPROM SyncManager configuration.
 - **Two separate network planes**:
   - **Native GMAC** (DWMAC 1000 + Motorcomm YT8531C PHY) → dedicated **EtherCAT L2** (raw, EtherType 0x88A4).
   - **USB-Ethernet RTL8153B** (USB 2.0) → **TCP/IP + SSH** (lwIP + wolfSSH).
@@ -150,9 +179,9 @@ The following upstream components are **vendored in the repository** (`.git` rem
 | lwIP | 2.2.1 | BSD | TCP/IP stack (NO_SYS=1) |
 | wolfSSL / wolfCrypt | 5.9.2 | GPLv2 / commercial | SSH crypto |
 | wolfSSH | 1.5.0 | GPLv2 / commercial | SSH server |
-| EtherCAT master | home-grown (`ecrt_*` API, IgH 1.6.8 compatible) | GPLv3 | EtherCAT master (ESM/PDO) |
+| EtherCAT master | Modified derivative work based on EtherLab EtherCAT Master 1.6.8 (`ecrt_*` API compatible with IgH 1.6.8 ) | GPLv2 | EtherCAT master (ESM/PDO) |
 
-> **License note**: the linked image embeds GPLv2 sources (wolfSSL/wolfSSH). For a proprietary product, a commercial license from wolfSSL (and IgH) is required, or these components must be isolated. lwIP and FatFs are BSD (no copyleft constraint). U-Boot (GPL) remains an external bootloader and does not affect the OS license.
+> **License note**: The final firmware image may contain statically linked GPL-covered components. Their respective licenses remain applicable to those components. For a proprietary product, a commercial license from wolfSSL (and IgH) is required, or these components must be isolated. lwIP and FatFs are BSD (no copyleft constraint). U-Boot (GPL) remains an external bootloader and does not affect the OS license.
 
 ---
 
@@ -273,7 +302,7 @@ Order of development phases done and tested.
 
 ### WCET Highlights
 
-The WCET campaign measured the EtherCAT cycle on **Core 0** under various load scenarios on **Core 2** (idle, ping flood, telnet, SSH, combined). CPU calibrated at **600 MHz**. The EtherCAT master was  flipping the outputs of a AMSAMOTION EC1A-IO16R (Hardware version 0.1, Software version 0.1 (but ESI file tells revision number : 0x00010001. Label on device tells : v1.1), the same slave from my repo YAEMAA, at 0,5 hz (1s ON / 1s OFF) and reading the inputs.
+The WCET campaign measured the EtherCAT cycle on **Core 0** under various load scenarios on **Core 2** (idle, ping flood, telnet, SSH, combined). CPU calibrated at **600 MHz**. The EtherCAT master was used to toggle the outputs of an AMSAMOTION EC1A-IO16R (Hardware version 0.1, Software version 0.1 (but ESI file tells revision number : 0x00010001. Label on device tells : v1.1), the same slave from my repo YAEMAA, at 0.5 hz (1s ON / 1s OFF) and reading the inputs.
 
 | EtherCAT period | Max processing (cycle load)    | Overruns    | Wake-up jitter        |
 |-----------------|--------------------------------|-------------|-----------------------|
@@ -282,10 +311,42 @@ The WCET campaign measured the EtherCAT cycle on **Core 0** under various load s
 | 250 µs          | 29.9 → 33.2 µs (11.9–13.2 %)   |    **0**    | **100 % in [0-1) µs** |
 | 100 µs          | 29.9 µs (29.8 %)               | 1 (warm-up) | **100 % in [0-1) µs** |
 
-**Isolation proven**: across all periods and all load scenarios, the EtherCAT cycle wake-up jitter on Core 0 remains **100 % within [0-1) µs** — the network/USB/SSH load on Core 2 does **not** perturb the determinism of Core 0. The minimum sustained tested period is **100 µs (10 kHz)**.
+**Isolation demonstrated by measurement**: Under all tested periods and workload scenarios, the EtherCAT cycle wake-up jitter on Core 0 remains **100 % within [0-1) µs** — the network/USB/SSH load on Core 2 does **not** perturb the determinism of Core 0. The minimum sustained tested EtherCAT cycle period is **100 µs (10 kHz)**.
 
 ---
 
 ## License
 
-The OROS kernel, HAL, drivers, and services are original work. The linked image embeds **GPLv2** components (wolfSSL/wolfSSH, and the EtherCAT master is a home-grown reimplementation inspired by EtherLab IgH, also GPLv2). For a proprietary product, a commercial license from wolfSSL and IgH is required, or these components must be isolated. lwIP and FatFs are BSD-licensed (no copyleft constraint). U-Boot (GPL) remains an external bootloader and does not affect the OS license.
+OROS is composed of original software developed specifically for a
+bare-metal AArch64 real-time operating system and third-party components.
+
+The original OROS kernel, HAL, scheduler, drivers, and real-time services
+are licensed separately under the OROS project license.
+
+Third-party components retain their original licenses:
+
+- EtherCAT master:
+  modified derivative work based on EtherLab EtherCAT Master 1.6.8.
+  Licensed under GNU General Public License version 2 (GPLv2).
+
+  The OROS port includes modifications such as:
+  - removal of Linux kernel dependencies
+  - replacement of Linux synchronization primitives
+  - replacement of Linux networking interfaces
+  - integration with OROS hardware abstraction and real-time execution model
+
+- lwIP:
+  BSD licensed.
+
+- FatFs:
+  BSD-like licensed.
+
+- wolfSSL/wolfCrypt and wolfSSH:
+  GPLv2 or commercial licensing depending on the distribution model.
+
+U-Boot remains an external GPL-licensed bootloader component and is not
+part of the OROS operating system source tree.
+
+For proprietary products, GPL-covered components must either be used in
+compliance with their licenses or replaced with separately licensed
+alternatives.
