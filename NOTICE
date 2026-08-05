@@ -1,0 +1,11 @@
+OROS contains third-party software components.
+
+The original OROS kernel, HAL, drivers, scheduler and services
+are licensed under GNU General Public License version 3 (GPLv3).
+
+Third-party components retain their original licenses:
+- EtherCAT master: GPLv2
+- lwIP: BSD license
+- FatFs: BSD-like license
+- wolfSSL/wolfSSH: GPLv2 or commercial license
+- U-Boot: GPLv2 (external bootloader)
