@@ -320,7 +320,7 @@ UART console, all hooked to the **same interpreter** `net_shell_exec()`.
               ecatM0 / … permanent              hardRT1 / ioSup / softRT3
 ```
 
-### 9.2 IRQ flow (see section 6.2)
+### 9.2 IRQ flow (see section §6.2)
 ### 9.3 Inter-core communication
 ```
  Core0 (EtherCAT) ──ecat_diag snapshot──► Core2 (shell)  [real-time read]
