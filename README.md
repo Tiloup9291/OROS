@@ -273,7 +273,7 @@ Order of development phases done and tested.
 
 ### WCET Highlights
 
-The WCET campaign measured the EtherCAT cycle on **Core 0** under various load scenarios on **Core 2** (idle, ping flood, telnet, SSH, combined). CPU calibrated at **600 MHz**.
+The WCET campaign measured the EtherCAT cycle on **Core 0** under various load scenarios on **Core 2** (idle, ping flood, telnet, SSH, combined). CPU calibrated at **600 MHz**. The EtherCAT master was  flipping the outputs of a AMSAMOTION EC1A-IO16R (Hardware version 0.1, Software version 0.1 (but ESI file tells revision number : 0x00010001. Label on device tells : v1.1), the same slave from my repo YAEMAA, at 0,5 hz (1s ON / 1s OFF) and reading the inputs.
 
 | EtherCAT period | Max processing (cycle load)    | Overruns    | Wake-up jitter        |
 |-----------------|--------------------------------|-------------|-----------------------|
