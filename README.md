@@ -26,7 +26,7 @@ OROS is a from-scratch, hard real-time operating system targeting the ARMv8-A (A
 
 ## Overview
 
-OROS is a hard real-time operating system designed for deterministic, industrial-grade control applications. It is written in C (C11), compiled with GCC, and runs bare-metal on the Rockchip RK3328 SoC. The design philosophy is **"zero Linux"**: the entire kernel, drivers, and services are implemented from scratch, with only newlib providing the standard C library (linked through custom bare-metal stubs).
+OROS is a hard real-time operating system designed for deterministic, industrial-grade control applications. It is written in C (C11), compiled with GCC, and runs bare-metal on the Rockchip RK3328 SoC. The design philosophy is **"zero Linux"**: the entire kernel, drivers, and services are implemented from scratch, with only newlib providing the standard C library (linked through custom bare-metal stubs). No OS blobs or heavy background services. It comes to do what you want it to do, point. Of this fact, the sources and the API make it easy to expand the system as you need.
 
 The system is organized around a **critically-partitioned SMP** architecture: each of the four Cortex-A53 cores is statically assigned a scheduling partition with a fixed criticality class, strict affinity, and no migration. This isolates hard real-time workloads from I/O and best-effort traffic, guaranteeing bounded worst-case execution times (WCET).
 
