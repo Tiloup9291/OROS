@@ -14,14 +14,14 @@
 
 1. [Operating type](#1-operating-type)
 2. [Layered view](#2-layered-view)
-3. [File map](#3-file-map)  
-3bis. [Dependencies & build environment](#3bis-dependencies--build-environment)
-4. [Hardware target & topology](#4-hardware-target--topology)
-5. [Boot pipeline & activation order](#5-boot-pipeline--activation-order)
-6. [Execution & scheduling model](#6-execution--scheduling-model)
-7. [Memory model & cache coherence](#7-memory-model--cache-coherence)
-8. [Diagrams](#8-diagrams)
-9. [Appendix: critical lessons](#9-appendix-critical-lessons)
+3. [File map](#3-file-map)
+4. [Dependencies & build environment](#4-dependencies--build-environment)
+5. [Hardware target & topology](#5-hardware-target--topology)
+6. [Boot pipeline & activation order](#6-boot-pipeline--activation-order)
+7. [Execution & scheduling model](#7-execution--scheduling-model)
+8. [Memory model & cache coherence](#8-memory-model--cache-coherence)
+9. [Diagrams](#9-diagrams)
+10. [Appendix: critical lessons](#10-appendix-critical-lessons)
 
 ---
 
@@ -106,7 +106,7 @@
 
 ---
 
-## 3bis. Dependencies & build environment
+## 4. Dependencies & build environment
 
 ### Toolchain (mandatory)
 - **Arm GNU Toolchain `arm-gnu-toolchain-13.3.rel1-x86_64-aarch64-none-elf`**
@@ -158,7 +158,7 @@
 
 ---
 
-## 4. Hardware target & topology
+## 5. Hardware target & topology
 
 - **SoC RK3328**: 4× Cortex-A53 (~600 MHz measured/calibrated), GIC-400, ARM Generic
   Timer, PMU, 1 GiB DDR4.
@@ -176,9 +176,9 @@
 
 ---
 
-## 5. Boot pipeline & activation order
+## 6. Boot pipeline & activation order
 
-### 5.1 Core 0 — `_start` (start.S) → `kmain` (kernel/main.c)
+### 6.1 Core 0 — `_start` (start.S) → `kmain` (kernel/main.c)
 
 **In assembly (`start.S`)**: entry from U-Boot (expected EL2 on the validated board configuration) →
 **clean EL2→EL1 switch** → stack setup (`__stack_top`) → **FP/SIMD enable**
@@ -211,7 +211,7 @@
 14. irq_enable() ; sched_start()    → schedules Core 0; DOES NOT RETURN
 ```
 
-### 5.2 Secondary cores — `secondary_entry` (start.S) → `secondary_main` (smp.c)
+### 6.2 Secondary cores — `secondary_entry` (start.S) → `secondary_main` (smp.c)
 
 **In assembly (`secondary_entry`)**: entry via PSCI CPU_ON (in EL2) →
 **EL2→EL1 switch** → loads the `g_sec_sp[core]` stack (published at the Point of
@@ -237,16 +237,16 @@ BEFORE any C code) → jump to `secondary_main`.
 
 ---
 
-## 6. Execution & scheduling model
+## 7. Execution & scheduling model
 
-### 6.1 Partitions & affinity
+### 7.1 Partitions & affinity
 - **One run-queue per core**; each thread is pinned to a core (`tcb.core`),
   **no migration** → deterministic cache/TLB. No load balancing is performed between cores. Partition assignment is static.
 - **Fixed priorities** (0 = highest), **round-robin** at equal priority.
 - **Preemption**: on timer tick (`sched_on_tick` in `irq_handler`) or reschedule
   IPI (`IPI_RESCHED`). `thread_yield()` yields voluntarily.
 
-### 6.2 Interrupts (flow)
+### 7.2 Interrupts (flow)
 ```
 IRQ → vectors.S (stacks trap frame, x0=SP) → irq_handler(sp)
         │
@@ -258,7 +258,7 @@ IRQ → vectors.S (stacks trap frame, x0=SP) → irq_handler(sp)
         gic_end_of_interrupt(INTID) → return sp' → vectors.S restores context
 ```
 
-### 6.3 Hard-RT cycle (Core 0: EtherCAT master)
+### 7.3 Hard-RT cycle (Core 0: EtherCAT master)
 `ecat_task_entry` (infinite thread) clocked by the **Generic Timer** in **absolute
 cadence** (`next += period_ticks`), period `CFG_ECAT_CYCLE_US`:
 ```
@@ -267,12 +267,12 @@ cadence** (`next += period_ticks`), period `CFG_ECAT_CYCLE_US`:
 ```
 GMAC IRQ **disabled** (pure polling) → deterministic jitter.
 
-### 6.4 I/O loop (Core 2)
+### 7.4 I/O loop (Core 2)
 `net_task_entry` (infinite thread): `klog_drain_to_uart` + RTL8153B RX polling →
 lwIP (`ethernet_input`, `sys_check_timeouts`) + telnet:23 / SSH:22 servers +
 UART console, all hooked to the **same interpreter** `net_shell_exec()`.
 
-### 6.5 Inter-core communication
+### 7.5 Inter-core communication
 - **Lock-free SPSC mailbox** + notification IPI (`IPI_MAILBOX`).
 - **EtherCAT diag**: shared `ecat_diag` snapshot (64-byte aligned), published by
   Core 0 each cycle, read by the shell (Core 2) → real-time `ecat`/`wcet` commands.
@@ -280,7 +280,7 @@ UART console, all hooked to the **same interpreter** `net_shell_exec()`.
 
 ---
 
-## 7. Memory model & cache coherence
+## 8. Memory model & cache coherence
 
 - **MMU** (`mmu.c`): identity mapping VA==PA. RAM in **Normal, Inner-Shareable,
   Write-Back** (essential for LDAXR/STXR exclusives between cores and `dmb ish`
@@ -297,9 +297,9 @@ UART console, all hooked to the **same interpreter** `net_shell_exec()`.
 
 ---
 
-## 8. Diagrams
+## 9. Diagrams
 
-### 8.1 Boot sequence (summary)
+### 9.1 Boot sequence (summary)
 ```
  U-Boot ──(go)──► _start (EL2)
                     │ EL2→EL1, stack, FP/SIMD, BSS
@@ -320,8 +320,8 @@ UART console, all hooked to the **same interpreter** `net_shell_exec()`.
               ecatM0 / … permanent              hardRT1 / ioSup / softRT3
 ```
 
-### 8.2 IRQ flow (see section 6.2)
-### 8.3 Inter-core communication
+### 9.2 IRQ flow (see section 6.2)
+### 9.3 Inter-core communication
 ```
  Core0 (EtherCAT) ──ecat_diag snapshot──► Core2 (shell)  [real-time read]
  Core1/Core3      ──mailbox_send_notify─► Core2           [heartbeats + IPI]
@@ -330,7 +330,7 @@ UART console, all hooked to the **same interpreter** `net_shell_exec()`.
 
 ---
 
-## 9. Appendix: critical lessons
+## 10. Appendix: critical lessons
 
 ### Critical lessons
 - **SMP**: secondary MMU enabled in ASM before C; `g_sec_sp` published at the PoC
