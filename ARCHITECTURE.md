@@ -347,4 +347,4 @@ UART console, all hooked to the **same interpreter** `net_shell_exec()`.
   for the ed25519 host key; full RX drain + non-blocking TX ring.
 - **Isolation**: over 1000/500/250/100 µs × 5 load scenarios, the
   EtherCAT cycle wake-up jitter (Core 0) stays **100% within [0-1) µs** — Core 2
-  load does not disturb Core 0. Minimum sustained period = **100 µs (10 kHz)**.
+  load does not disturb Core 0. Minimum sustained tested EtherCAT cycle period = **100 µs (10 kHz)**.
