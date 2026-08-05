@@ -14,7 +14,7 @@
 
 1. [Operating type](#1-operating-type)
 2. [Layered view](#2-layered-view)
-3. [File map](#3-file-map)
+3. [File map](#3-file-map)  
 3bis. [Dependencies & build environment](#3bis-dependencies--build-environment)
 4. [Hardware target & topology](#4-hardware-target--topology)
 5. [Boot pipeline & activation order](#5-boot-pipeline--activation-order)
