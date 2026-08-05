@@ -174,11 +174,11 @@ The following upstream components are **vendored in the repository** (`.git` rem
 
 | Component | Version | License | Role |
 |-----------|---------|---------|------|
-| newlib | (from toolchain) | BSD-like | Bare-metal libc |
+| newlib | 4.4.0 (from toolchain) | Various permissives licenses | Bare-metal libc |
 | FatFs (ChaN) | R0.15 | BSD-like | FAT32 file system |
 | lwIP | 2.2.1 | BSD | TCP/IP stack (NO_SYS=1) |
-| wolfSSL / wolfCrypt | 5.9.2 | GPLv2 / commercial | SSH crypto |
-| wolfSSH | 1.5.0 | GPLv2 / commercial | SSH server |
+| wolfSSL / wolfCrypt | 5.9.2 | GPLv3 / commercial | SSH crypto |
+| wolfSSH | 1.5.0 | GPLv3 / commercial | SSH server |
 | EtherCAT master | Modified derivative work based on EtherLab EtherCAT Master 1.6.8 (`ecrt_*` API compatible with IgH 1.6.8 ) | GPLv2 | EtherCAT master (ESM/PDO) |
 
 > **License note**: The final firmware image may contain statically linked GPL-covered components. Their respective licenses remain applicable to those components. For a proprietary product, a commercial license from wolfSSL (and IgH) is required, or these components must be isolated. lwIP and FatFs are BSD (no copyleft constraint). U-Boot (GPL) remains an external bootloader and does not affect the OS license.
@@ -338,11 +338,14 @@ Third-party components retain their original licenses:
 - lwIP:
   BSD licensed.
 
+- newlib:
+  Various permissives licenses.
+
 - FatFs:
   BSD-like licensed.
 
 - wolfSSL/wolfCrypt and wolfSSH:
-  GPLv2 or commercial licensing depending on the distribution model.
+  GPLv3 or commercial licensing depending on the distribution model.
 
 U-Boot remains an external GPL-licensed bootloader component and is not
 part of the OROS operating system source tree.
