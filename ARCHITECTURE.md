@@ -28,7 +28,7 @@
 ## 1. Operating type
 
 - **Hard real-time baremetal AArch64 (ARMv8-A)**, preemptive, running in **EL1**.
-- **"Zero Linux"** (NFR2): no dependency on glibc, `linux/*.h`, or Linux syscalls. Only
+- **"Zero Linux"**: no dependency on glibc, `linux/*.h`, or Linux syscalls. Only
   **custom newlib stubs** (`lib/newlib_stubs.c`) connect the libc to the hardware
   (`_sbrk`, `_write`→UART, etc.).
 - **SMP partitioned by criticality**: 4 Cortex-A53 cores, each with a
