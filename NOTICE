@@ -7,5 +7,6 @@ Third-party components retain their original licenses:
 - EtherCAT master: GPLv2
 - lwIP: BSD license
 - FatFs: BSD-like license
-- wolfSSL/wolfSSH: GPLv2 or commercial license
+- newlib: Various permissives licenses
+- wolfSSL/wolfSSH/wolfCrypt: GPLv3 or commercial license
 - U-Boot: GPLv2 (external bootloader)
