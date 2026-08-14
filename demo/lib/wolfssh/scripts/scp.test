@@ -1,0 +1,256 @@
+#!/bin/sh
+
+# scp local test
+
+no_pid=-1
+server_pid=$no_pid
+ready_file=`pwd`/wolfssh_scp_ready$$
+
+[ ! -x ./examples/scpclient/wolfscp ] && echo -e "\n\nwolfscp client doesn't exist" && exit 1
+
+# test for nonblocking only - wolfscp does not support -N flag for non-blocking
+# mode, so we must skip when TEST_BLOCK is enabled
+./examples/client/client -h | grep WOLFSSH_TEST_BLOCK
+if [ $? -eq 0 ]
+then
+    echo "WOLFSSH_TEST_BLOCK detected"
+    echo "wolfscp client does not support non-blocking mode, skipping test"
+    exit 77
+fi
+
+create_port() {
+    # each server gets its own wait budget, the count must not carry over
+    counter=0
+    while [ ! -s "$ready_file" ] && [ "$counter" -lt 20 ]; do
+        echo -e "waiting for ready file..."
+        sleep 0.1
+        counter=$((counter+ 1))
+    done
+
+    if test -e $ready_file; then
+        echo -e "found ready file, starting client..."
+
+        # get created port 0 ephemeral port
+        port=`cat $ready_file`
+    else
+        echo -e "NO ready file ending test..."
+        do_cleanup
+        exit 1
+    fi
+}
+
+remove_ready_file() {
+    if test -e $ready_file; then
+        echo -e "removing existing ready file"
+    rm $ready_file
+    fi
+}
+
+stop_server() {
+    if  [ $server_pid != $no_pid ]
+    then
+        echo "killing server"
+        kill -9 $server_pid 2>/dev/null
+        wait $server_pid 2>/dev/null
+        server_pid=$no_pid
+    fi
+}
+
+# timeout reports 124 when it fires, the shell reports 128+N for a signal.
+# Either way the client did not run to completion, so the checks that follow
+# would be meaningless and must not be allowed to report a pass.
+check_timeout() {
+    if [ "$1" -eq 124 ] || [ "$1" -ge 128 ]
+    then
+        echo -e "\n\nclient did not complete: $2"
+        do_cleanup
+        exit 1
+    fi
+}
+
+do_cleanup() {
+    echo "in cleanup"
+
+    stop_server
+    remove_ready_file
+    # remove symlink-test artifacts so an early exit (e.g. create_port failure)
+    # does not leave a planted secret/symlink behind in the source tree
+    [ -n "$scp_secret" ] && rm -f "$scp_secret" "$scp_symlink" "$scp_symlink_out"
+}
+
+do_trap() {
+    echo "got trap"
+    do_cleanup
+    exit -1
+}
+
+trap do_trap INT TERM
+
+[ ! -x ./examples/scpclient/wolfscp ] && echo -e "\n\nClient doesn't exist" && exit 1
+
+# Use timeout in case the server does not respond, so the test does not hang
+if command -v timeout > /dev/null 2>&1; then
+    run_client="timeout 60"
+elif command -v gtimeout > /dev/null 2>&1; then
+    run_client="gtimeout 60"
+else
+    run_client=""
+fi
+
+echo "Test basic copy from server to local"
+./examples/echoserver/echoserver -1 -R $ready_file &
+server_pid=$!
+create_port
+$run_client ./examples/scpclient/wolfscp -u jill -P upthehill -p $port -S $PWD/scripts/scp.test:$PWD/scp.test
+RESULT=$?
+remove_ready_file
+stop_server
+check_timeout $RESULT "basic copy from server to local"
+
+if test -e $PWD/scp.test; then
+    rm $PWD/scp.test
+else
+    echo -e "\n\nfailed to get file"
+    do_cleanup
+    exit 1
+fi
+
+echo "Test basic copy from local to server"
+./examples/echoserver/echoserver -1 -R $ready_file &
+server_pid=$!
+create_port
+$run_client ./examples/scpclient/wolfscp -u jill -P upthehill -p $port -L $PWD/scripts/scp.test:$PWD/scp.test
+RESULT=$?
+remove_ready_file
+stop_server
+check_timeout $RESULT "basic copy from local to server"
+
+if test -e $PWD/scp.test; then
+    rm $PWD/scp.test
+else
+    echo -e "\n\nfailed to send file"
+    do_cleanup
+    exit 1
+fi
+
+echo "Test of getting empty file"
+touch $PWD/scripts/empty
+./examples/echoserver/echoserver -1 -R $ready_file &
+server_pid=$!
+create_port
+$run_client ./examples/scpclient/wolfscp -u jill -P upthehill -p $port -S $PWD/scripts/empty:$PWD/empty
+RESULT=$?
+remove_ready_file
+stop_server
+rm -f $PWD/scripts/empty
+check_timeout $RESULT "getting empty file"
+
+if test -e $PWD/empty ; then
+    rm $PWD/empty
+else
+    echo -e "\n\nfailed to get empty file"
+    do_cleanup
+    exit 1
+fi
+
+echo "Test of sending empty file"
+touch $PWD/scripts/empty
+./examples/echoserver/echoserver -1 -R $ready_file &
+server_pid=$!
+create_port
+$run_client ./examples/scpclient/wolfscp -u jill -P upthehill -p $port -L $PWD/scripts/empty:$PWD/empty
+RESULT=$?
+remove_ready_file
+stop_server
+rm -f $PWD/scripts/empty
+check_timeout $RESULT "sending empty file"
+
+if test -e $PWD/empty ; then
+    rm $PWD/empty
+else
+    echo -e "\n\nfailed to send empty file"
+    do_cleanup
+    exit 1
+fi
+
+echo "Test of sending a file that does not exist"
+touch $PWD/scripts/empty
+./examples/echoserver/echoserver -1 -R $ready_file &
+server_pid=$!
+create_port
+$run_client ./examples/scpclient/wolfscp -u jill -P upthehill -p $port -L $PWD/does-not-exist:$PWD/empty
+RESULT=$?
+remove_ready_file
+stop_server
+rm -f $PWD/scripts/empty
+# a timeout is also non-zero, so rule it out before reading the status below
+check_timeout $RESULT "sending a file that does not exist"
+
+if test $RESULT -eq 0; then
+    echo -e "\n\nshould fail out sending a file that does not exist"
+    do_cleanup
+    exit 1
+fi
+
+# The symlink-rejection guard is compiled out by WOLFSSH_NO_SYMLINK_CHECK, which
+# the example client reports in its usage output (-?).  Skip this test when it is
+# set: the server then follows symlinks by design and the check below would
+# false-fail.
+./examples/client/client '-?' | grep WOLFSSH_NO_SYMLINK_CHECK
+if [ $? -eq 0 ]; then
+    echo "symlink checking disabled, skipping symlink test"
+else
+    echo "Test that the server refuses to follow a symlink (server to local)"
+    # This exercises the single-file send path (WOLFSSH_SCP_SINGLE_FILE_REQUEST),
+    # whose file open now goes through wFopenNoFollow (atomic O_NOFOLLOW on
+    # POSIX), so this case drives the no-follow open end to end.
+    # The recursive sinks (the recursive-root leaf check and the per-entry check
+    # in ScpProcessEntry) use the same shared wIsSymlink helper but cannot be
+    # driven from here: the wolfSSH example client (wolfSSH_SCP_from) only ever
+    # issues "scp -f <path>", never "scp -f -r", so the server's recursive
+    # request state is never reached by this harness.  wIsSymlink itself is
+    # additionally exercised through the SFTP confinement unit test
+    # (test_wolfSSH_SFTP_Confinement), so the detection logic shared by all sinks
+    # is covered even though the SCP recursive wiring is not driven e2e.
+    scp_secret=$PWD/scripts/scp_secret_$$
+    scp_symlink=$PWD/scp_symlink_$$
+    scp_symlink_out=$PWD/scp_symlink_out_$$
+    echo "TOP SECRET SYMLINK TARGET" > $scp_secret
+    # A symlink whose target exists would, without the fix, be opened and its
+    # contents streamed to the client. The fix must reject it instead.
+    ln -s $scp_secret $scp_symlink
+    if test -L $scp_symlink; then
+        ./examples/echoserver/echoserver -1 -R $ready_file &
+        server_pid=$!
+        create_port
+        $run_client ./examples/scpclient/wolfscp -u jill -P upthehill -p $port -S $scp_symlink:$scp_symlink_out
+        RESULT=$?
+        remove_ready_file
+        stop_server
+        # this test passes when no output file appears, which a hung client
+        # would also produce, so a timeout has to fail the script outright
+        check_timeout $RESULT "symlink refusal"
+
+        # The server must not deliver the symlink target: no local output file
+        # may be produced from the refused request. The client exit status is
+        # not otherwise asserted (as with the other -S cases it does not
+        # propagate a server-side SCP abort); connectivity in this environment
+        # is already proven by the "basic copy from server to local" case
+        # above, which uses the same mechanism and aborts the whole script on
+        # failure, so this cannot pass vacuously.
+        if test -e $scp_symlink_out; then
+            rm -f $scp_symlink_out $scp_secret $scp_symlink
+            echo -e "\n\nserver followed a symlink, confinement bypass"
+            do_cleanup
+            exit 1
+        fi
+    else
+        echo "symlink not supported on this filesystem, skipping symlink test"
+    fi
+    rm -f $scp_secret $scp_symlink $scp_symlink_out
+fi
+
+echo -e "\nALL Tests Passed"
+
+exit 0
+

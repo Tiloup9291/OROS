@@ -1,0 +1,39 @@
+/* auth.h
+ *
+ * Copyright (C) 2014-2026 wolfSSL Inc.
+ *
+ * This file is part of wolfSSH.
+ *
+ * wolfSSH is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * wolfSSH is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with wolfSSH.  If not, see <http://www.gnu.org/licenses/>.
+ */
+
+#ifndef _WOLFSSH_TESTS_AUTH_H_
+#define _WOLFSSH_TESTS_AUTH_H_
+
+#include <wolfssh/test.h>
+
+int wolfSSH_AuthTest(int argc, char** argv);
+
+typedef struct thread_args {
+    int return_code;
+    tcp_ready* signal;
+    void* pubkeyServerCtx;      /* server callback context for pubkey tests */
+    WS_CallbackUserAuth userAuth; /* server userAuth callback; NULL = none */
+    const byte* caCert;           /* CA cert for AddRootCert; NULL = skip */
+    word32      caCertSz;
+    const byte* hostKeyBuf;     /* server host key; NULL = use load_key() */
+    word32      hostKeyBufSz;
+} thread_args;
+
+#endif /* _WOLFSSH_TESTS_AUTH_H_ */
