@@ -1,0 +1,75 @@
+name: Zephyr tests
+
+on:
+  push:
+    branches: [ 'master', 'main', 'release/**' ]
+  pull_request:
+    branches: [ '*' ]
+  workflow_dispatch:
+
+jobs:
+  run_test:
+    name: Build and run
+    strategy:
+      fail-fast: false
+      matrix:
+        config:
+          # Each leg runs in the Zephyr Project CI image whose bundled SDK
+          # matches the Zephyr release under test: v0.26.4 ships SDK 0.16.1
+          # (for Zephyr 3.4.0), v0.29.0 ships SDK 1.0.0 (for Zephyr 4.4.0).
+          - zephyr-ref: v3.4.0
+            docker-image: v0.26.4
+          - zephyr-ref: v4.4.0
+            docker-image: v0.29.0
+    runs-on: ubuntu-22.04
+    container:
+      image: ghcr.io/zephyrproject-rtos/ci:${{ matrix.config.docker-image }}
+    env:
+      # The Zephyr SDK is preinstalled under /opt/toolchains in the CI image.
+      ZEPHYR_SDK_INSTALL_DIR: /opt/toolchains
+    # This should be a safe limit for the tests to run.
+    timeout-minutes: 20
+    steps:
+      - name: Init west workspace
+        run: west init --mr ${{ matrix.config.zephyr-ref }} zephyr
+
+      - name: Update west.yml
+        working-directory: zephyr/zephyr
+        run: |
+          REF=$(echo '${{ github.ref }}' | sed -e 's/\//\\\//g')
+          sed -e 's/remotes:/remotes:\n    \- name: wolfssl\n      url\-base: https:\/\/github.com\/wolfssl/' -i west.yml
+          sed -e "s/remotes:/remotes:\n    \- name: wolfssh\n      url\-base: https:\/\/github.com\/${{ github.repository_owner }}/" -i west.yml
+          sed -e "s/projects:/projects:\n    \- name: wolfssh\n      path: modules\/lib\/wolfssh\n      remote: wolfssh\n      revision: $REF/" -i west.yml
+          sed -e 's/projects:/projects:\n    \- name: wolfssl\n      path: modules\/crypto\/wolfssl\n      remote: wolfssl\n      revision: master/' -i west.yml
+
+      - name: Update west workspace
+        working-directory: zephyr
+        run: west update -n -o=--depth=1
+
+      - name: Export zephyr
+        working-directory: zephyr
+        run: west zephyr-export
+
+      - name: Run wolfssh tests
+        id: wolfssh-test
+        working-directory: zephyr
+        run: |
+          # Run every scenario discovered under the wolfssh testsuite root.
+          # Selecting by scenario name with --test is avoided on purpose: the
+          # scenario id is path-prefixed on older twister (v3.4.0) but bare on
+          # newer twister (v4.x), so a fixed --test value works on only one of
+          # the matrix legs. The wolfssh tree defines a single sample.yaml, so
+          # scoping by --testsuite-root runs exactly our scenarios on both.
+          ./zephyr/scripts/twister --testsuite-root modules/lib/wolfssh -vvv
+
+      - name: Archive failure logs
+        if: ${{ failure() && steps.wolfssh-test.outcome == 'failure' }}
+        run: tar caf logs.tar.xz zephyr/twister-out
+
+      - name: Upload failure logs
+        if: ${{ failure() && steps.wolfssh-test.outcome == 'failure' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: zephyr-client-test-logs-${{ matrix.config.zephyr-ref }}
+          path: logs.tar.xz
+          retention-days: 5
