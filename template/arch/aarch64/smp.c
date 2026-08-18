@@ -61,6 +61,8 @@ void smp_release_schedulers(void) { g_sched_go = 1; __asm__ volatile("dsb sy; se
 /* ---- PSCI (SMCCC) ---- */
 #define PSCI_CPU_ON_AARCH64   0xC4000003u
 #define PSCI_SYSTEM_OFF       0x84000008u
+#define PSCI_SYSTEM_RESET     0x84000009u
+
 
 
 /* Low level entry point for secondary cores (start.S). */
@@ -149,6 +151,14 @@ void smp_system_off(void)
     for (;;)
         __asm__ volatile("wfi");
 }
+
+void smp_system_reset(void)
+{
+    psci_call(PSCI_SYSTEM_RESET, 0, 0, 0);
+    for (;;)
+        __asm__ volatile("wfi");
+}
+
 
 
 static inline void irq_enable(void)  { __asm__ volatile("msr daifclr, #2" ::: "memory"); }
