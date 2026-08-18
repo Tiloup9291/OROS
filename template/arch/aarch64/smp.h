@@ -60,6 +60,8 @@ void smp_release_schedulers(void);
  * DON'T call on real hardware if the system must remain active. */
 void smp_system_off(void) __attribute__((noreturn));
 
+void smp_system_reset(void) __attribute__((noreturn));
+
 
 #endif /* RTOS_ARCH_SMP_H */
 
