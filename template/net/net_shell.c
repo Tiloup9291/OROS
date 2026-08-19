@@ -238,16 +238,16 @@ static void cmd_help(shell_out_fn out, void *ctx)
         "  ls             list FAT volume 0: (ls, ls -l, ls *.txt)\r\n"
         "                 [-l] [path][/pattern]\r\n"
         "  cd <path>      change current directory (cd .., cd /)\r\n"
-        "  pwd            print working directory\\r\\n"
-        "  mkdir          create directory on FAT volume 0:\\r\\n"
-        "                 [-p] <path>\\r\\n"
-        "  rm             remove file/dir on FAT volume 0:\\r\\n"
-        "                 [-r] [-f] <path>\\r\\n"
-        "  cat <file>     concatenate and print files (cat -n, -A)\\r\\n"
+        "  pwd            print working directory\r\n"
+        "  mkdir          create directory on FAT volume 0:\r\n"
+        "                 [-p] <path>\r\n"
+        "  rm             remove file/dir on FAT volume 0:\r\n"
+        "                 [-r] [-f] <path>\r\n"
+        "  cat <file>     concatenate and print files (cat -n, -A)\r\n"
         "  mv             rename or move file/dir on FAT volume 0:\r\n"
         "                 [-f] <src> <dst>\r\n"
-        "  cp             copy file/dir on FAT volume 0:\\r\\n"
-        "                 [-f] [-r] <src> <dst>\\r\\n"
+        "  cp             copy file/dir on FAT volume 0:\r\n"
+        "                 [-f] [-r] <src> <dst>\r\n"
         "  touch          create empty files on FAT volume 0:\r\n"
         "                 [-c] <file>...\r\n"
         "  quit, exit     quit session\r\n");
@@ -850,14 +850,19 @@ static void cmd_cd(shell_out_fn out, void *ctx, const char *arg)
     /* 4) Resolve vs CWD -> absolute "0:/..." (handles '', '.', '..'). */
     shell_resolve(p, path, sizeof(path));
 
-    /* 5) Target must exist and be a directory. */
-    r = f_stat(path, &fno);
+    /* 5) Target must exist and be a directory.
+     * FatFs f_stat("0:/") returns INVALID_NAME on a bare root path, so
+     * the volume root is always accepted without validation. */
+    r = FR_OK;
+    if (strcmp(path, "0:/") != 0)
+        r = f_stat(path, &fno);
+
     if (r != FR_OK) {
         sh_printf(out, ctx, "[cd] cannot access '%s' : %s\r\n",
                   path, fs_fr_str(r));
         return;
     }
-    if (!(fno.fattrib & AM_DIR)) {
+    if (strcmp(path, "0:/") != 0 && !(fno.fattrib & AM_DIR)) {
         sh_printf(out, ctx, "[cd] '%s' is not a directory\r\n", path);
         return;
     }
