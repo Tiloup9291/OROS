@@ -67,9 +67,13 @@ SECTIONS
 
     . = ALIGN(0x1000);
 
-    /* Heap : used by _sbrk (newlib). Fixed size. */
+    /* Heap : used by _sbrk (newlib). Fixed size.
+     * 8 MiB: the SFTP service (wolfSSH) allocates its per-request state,
+     * transfer buffers and WS_SFTPNAME directory-listing nodes from the heap.
+     * The RK3328 has 1 GiB of DDR and the image is loaded at 2 MiB, so this
+     * larger heap stays well within the mapped Normal Memory range. */
     __heap_start = .;
-    . = . + 0x00100000;     /* 1 MiB of heap */
+    . = . + 0x00800000;     /* 8 MiB of heap */
     __heap_end = .;
 
     . = ALIGN(0x1000);
