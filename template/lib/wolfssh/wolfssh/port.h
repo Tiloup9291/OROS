@@ -294,7 +294,14 @@ extern "C" {
         ret = f_open(*f, filename, m);
         return (int)ret;
     }
+#ifdef OROS_SFTP_JAIL
+    /* OROS: route the stream open through the /srv chroot layer
+     * (fs/sftp_jail.c) instead of hitting FatFs directly. */
+    #include "sftp_jail.h"
+    #define WFOPEN(fs, f, fn, m) oros_ff_fopen((f),(fn),(m))
+#else
     #define WFOPEN(fs, f, fn, m) ff_fopen((f),(fn),(m))
+#endif
 
 #ifdef WOLFSSH_XILFATFS
     static inline int ff_close(WFILE *f)
@@ -361,7 +368,12 @@ extern "C" {
     #define WBADFILE (-1)
     #ifndef NO_WOLFSSH_DIR
         #define WDIR DIR
+#ifdef OROS_SFTP_JAIL
+        /* OROS: directory opens are confined to /srv as well (see above). */
+        #define WOPENDIR(fs,h,c,d)  oros_ff_opendir((c),(d))
+#else
         #define WOPENDIR(fs,h,c,d)  f_opendir((c),(d))
+#endif
         #define WCLOSEDIR(fs,d)    f_closedir(d)
     #endif
 #elif defined(WOLFSSH_ZEPHYR)
@@ -1308,6 +1320,27 @@ extern "C" {
 #elif defined(WOLFSSH_FATFS)
     #define WSTAT_T FILINFO
 
+#ifdef OROS_SFTP_JAIL
+    /* OROS: every path-taking primitive goes through the /srv chroot layer
+     * (fs/sftp_jail.c), which normalizes the path, refuses anything resolving
+     * outside /srv, and rewrites it to its physical FatFs form "0:/srv/...".
+     * The descriptor-based calls also forward the SFTP offset, which the
+     * upstream ff_pread/ff_pwrite helpers below simply drop. */
+    #include "sftp_jail.h"
+
+    #define WRMDIR(fs, d) oros_ff_unlink((d))
+    #define WSTAT(fs,p,b) oros_ff_stat((p),(b))
+    #define WLSTAT(fs,p,b) oros_ff_stat((p),(b))
+    #define WREMOVE(fs,d) oros_ff_unlink((d))
+    #define WRENAME(fs,o,n) oros_ff_rename((o),(n))
+    #define WMKDIR(fs, p, m) oros_ff_mkdir((p))
+    #define WFD int
+
+    #define WOPEN(fs,f,m,p) oros_ff_open((f),(m),(p))
+    #define WPWRITE(fs,fd,b,s,o) oros_ff_pwrite((fd),(b),(s),(o))
+    #define WPREAD(fs,fd,b,s,o)  oros_ff_pread((fd),(b),(s),(o))
+    #define WCLOSE(fs,fd)  oros_ff_close((fd))
+#else
     #define WRMDIR(fs, d) f_unlink((d))
     #define WSTAT(fs,p,b) f_stat(p,b)
     #define WLSTAT(fs,p,b) f_stat(p,b)
@@ -1324,7 +1357,10 @@ extern "C" {
     #define WPWRITE(fs,fd,b,s,o) ff_pwrite(fd,b,s)
     #define WPREAD(fs,fd,b,s,o)  ff_pread(fd,b,s)
     #define WCLOSE(fs,fd)  ff_close(fd)
+#endif /* OROS_SFTP_JAIL */
 
+#ifndef OROS_SFTP_JAIL
+    /* OROS: not compiled in our build (FF_USE_CHMOD=0 -> no f_chmod()). */
     static inline int ff_chmod(const char *fname, int mode)
     {
         unsigned char atr = 0, mask = AM_RDO | AM_ARC;
@@ -1349,7 +1385,16 @@ extern "C" {
             return -1;
         return 0;
     }
+#endif /* !OROS_SFTP_JAIL */
 
+#ifdef OROS_SFTP_JAIL
+    /* OROS: FF_USE_CHMOD=0 and FF_FS_RPATH=0 in our FatFs build, so neither
+     * f_chmod() nor f_getcwd() is compiled in — referencing them here would
+     * break the link. FAT carries no POSIX mode bits, so chmod is a no-op,
+     * and inside the chroot the working directory is always the jail root. */
+    #define WCHMOD(fs,f,m) (0)
+    #define WGETCWD(fs,r,rSz) oros_ff_getcwd((r),(rSz))
+#else
     #define WCHMOD(fs,f,m) ff_chmod(f,m)
     static inline char *ff_getcwd(char *r, int rSz)
     {
@@ -1361,6 +1406,7 @@ extern "C" {
         return r;
     }
     #define WGETCWD(fs,r,rSz) ff_getcwd(r,(rSz))
+#endif /* OROS_SFTP_JAIL */
 #elif defined(USE_WINDOWS_API)
 
     #include <windows.h>
