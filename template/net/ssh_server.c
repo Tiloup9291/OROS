@@ -48,6 +48,10 @@
 #include <wolfssh/ssh.h>
 #include <wolfssh/error.h>
 #include <wolfssl/wolfcrypt/settings.h>
+#ifdef WOLFSSH_SFTP
+#include <wolfssh/wolfsftp.h>
+#include "sftp_jail.h"
+#endif
 
 #include "lwip/tcp.h"
 #include "lwip/pbuf.h"
@@ -65,6 +69,7 @@ typedef enum {
     SSH_ST_IDLE = 0,     /* no session                          */
     SSH_ST_ACCEPT,       /* SSH handshake in progress            */
     SSH_ST_RUN,          /* session established, shell exchange  */
+    SSH_ST_SFTP,         /* session established, SFTP subsystem  */
     SSH_ST_CLOSING       /* close requested                      */
 } ssh_state_t;
 
@@ -108,6 +113,9 @@ static struct tcp_pcb *s_listen = NULL;
 static uint32_t s_sessions = 0;
 static uint32_t s_auth_ok  = 0;
 static uint32_t s_commands = 0;
+#ifdef WOLFSSH_SFTP
+static uint32_t s_sftp_sessions = 0;   /* sessions that opened the subsystem */
+#endif
 
 /* ------------------------------------------------------------------ */
 /* RX ring: helpers                                                   */
@@ -376,12 +384,36 @@ static void ssh_advance(void)
             net_shell_welcome(ssh_shell_out, NULL);
             s_sess.banner_sent = 1;
         }
+#ifdef WOLFSSH_SFTP
+        /* The peer asked for the "sftp" subsystem instead of a shell.
+         * wolfSSH signals this by returning WS_SFTP_COMPLETE from the SAME
+         * wolfSSH_accept() call: same TCP port 22, same handshake, same
+         * password auth. From now on the session is driven by
+         * wolfSSH_SFTP_read() rather than by the line-based shell. */
+        else if (r == WS_SFTP_COMPLETE) {
+            s_sess.state = SSH_ST_SFTP;
+            s_sftp_sessions++;
+            printf("[ssh] sftp subsystem opened (rooted at %s)\n",
+                   OROS_SFTP_JAIL_ROOT);
+        }
+#endif
         else {
             int e = wolfSSH_get_error(s_ssh);
             if (e == WS_WANT_READ || e == WS_WANT_WRITE) {
                 /* Handshake not finished: we'll come back on the next poll. */
                 return;
             }
+#ifdef WOLFSSH_SFTP
+            /* Some paths report the subsystem completion through the error
+             * slot rather than the return value; treat it the same way. */
+            if (e == WS_SFTP_COMPLETE) {
+                s_sess.state = SSH_ST_SFTP;
+                s_sftp_sessions++;
+                printf("[ssh] sftp subsystem opened (rooted at %s)\n",
+                       OROS_SFTP_JAIL_ROOT);
+                return;
+            }
+#endif
             /* Fatal handshake error. */
             printf("[ssh] handshake failed (err=%d %s)\n", e,
                    wolfSSH_ErrorToName(e));
@@ -435,6 +467,55 @@ static void ssh_advance(void)
         }
         return;
     }
+
+#ifdef WOLFSSH_SFTP
+    if (s_sess.state == SSH_ST_SFTP) {
+        /* SFTP request pump. Same principle as the shell branch: process as
+         * many requests as are already decodable this round, then hand Core2
+         * back its main-loop. wolfSSH_SFTP_read() handles ONE request per
+         * call and parks a reply in the session when the socket is full, so
+         * we must also keep turning while PendingSend() is set. */
+        int guard = 0;
+        while (guard++ < 16) {
+            int r = wolfSSH_SFTP_read(s_ssh);
+            int e = wolfSSH_get_error(s_ssh);
+
+            /* Nothing more to decode / socket full: resume on the next poll,
+             * unless a reply is still queued (then keep draining it). */
+            if (e == WS_WANT_READ || e == WS_WANT_WRITE ||
+                    e == WS_WINDOW_FULL) {
+                if (!wolfSSH_SFTP_PendingSend(s_ssh))
+                    break;
+                continue;
+            }
+
+            /* Rekey in progress: not an error, just keep the crank turning. */
+            if (r == WS_REKEYING)
+                continue;
+
+            if (r == WS_EOF || e == WS_EOF ||
+                    r == WS_CHANNEL_CLOSED || e == WS_CHANNEL_CLOSED) {
+                s_sess.want_close = 1;
+                break;
+            }
+
+            if (r < 0 && r != WS_CHAN_RXD) {
+                printf("[ssh] sftp error (err=%d %s)\n", e,
+                       wolfSSH_ErrorToName(e));
+                s_sess.want_close = 1;
+                break;
+            }
+
+            /* A reply may still be pending after a successful request. */
+            if (wolfSSH_SFTP_PendingSend(s_ssh))
+                continue;
+        }
+
+        if (s_sess.want_close)
+            ssh_close_session();
+        return;
+    }
+#endif /* WOLFSSH_SFTP */
 
 }
 
@@ -517,10 +598,31 @@ static err_t ssh_tcp_accept(void *arg, struct tcp_pcb *newpcb, err_t err)
     wolfSSH_SetIOReadCtx(s_ssh, &s_sess);
     wolfSSH_SetIOWriteCtx(s_ssh, &s_sess);
 
+#ifdef WOLFSSH_SFTP
+    /* Confine SFTP to /srv BEFORE the handshake starts.
+     *
+     * This is the first of the two barriers: wolfSSH stores the default path
+     * canonically and then refuses (WS_PERMISSIONS) any request resolving
+     * outside that subtree. Setting it here also avoids the lazy
+     * "no default path yet" code path, which would call WGETCWD -> f_getcwd(),
+     * a function our FatFs build does not even compile in (FF_FS_RPATH=0).
+     * The second barrier is the fs/sftp_jail.c translation layer.
+     * If the jail root is missing (no SD card, no /srv), SFTP is simply not
+     * armed: the peer then gets a subsystem failure and can still use the
+     * interactive shell. */
+    if (oros_sftp_jail_ready()) {
+        if (wolfSSH_SFTP_SetDefaultPath(s_ssh, OROS_SFTP_JAIL_ROOT)
+                != WS_SUCCESS) {
+            printf("[ssh] WARNING: sftp default path (%s) refused\n",
+                   OROS_SFTP_JAIL_ROOT);
+        }
+    }
+#endif
+
     tcp_arg(newpcb, &s_sess);
     tcp_recv(newpcb, ssh_tcp_recv);
     tcp_err(newpcb, ssh_tcp_err);
-    tcp_poll(newpcb, ssh_tcp_poll, 2);   /* poll ~1 s (2 * 500ms)            */
+    tcp_poll(newpcb, ssh_tcp_poll, 1);   /* poll ~500 ms (1 * 500ms)         */
     tcp_nagle_disable(newpcb);
 
     s_sessions++;
@@ -580,15 +682,26 @@ int ssh_server_start(void)
 
 void ssh_server_poll(void)
 {
-    if (s_sess.state == SSH_ST_ACCEPT || s_sess.state == SSH_ST_RUN)
+    if (ssh_server_session_active())
         ssh_advance();
 }
 
 int ssh_server_session_active(void)
 {
-    return (s_sess.state == SSH_ST_ACCEPT || s_sess.state == SSH_ST_RUN);
+    return (s_sess.state == SSH_ST_ACCEPT ||
+            s_sess.state == SSH_ST_RUN ||
+            s_sess.state == SSH_ST_SFTP);
 }
 
 uint32_t ssh_server_sessions(void) { return s_sessions; }
 uint32_t ssh_server_auth_ok(void)  { return s_auth_ok;  }
 uint32_t ssh_server_commands(void) { return s_commands; }
+
+uint32_t ssh_server_sftp_sessions(void)
+{
+#ifdef WOLFSSH_SFTP
+    return s_sftp_sessions;
+#else
+    return 0;
+#endif
+}
