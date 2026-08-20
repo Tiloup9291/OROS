@@ -71,10 +71,22 @@ void ssh_server_poll(void);
  * (no delay) while a client is connected. */
 int ssh_server_session_active(void);
 
+/* Root directory exposed to SFTP clients. The service is confined to this
+ * subtree (see fs/sftp_jail.h): it maps to "0:/srv" on the FAT volume, and a
+ * client can neither reach the volume root nor escape above it. */
+#ifndef SSH_SFTP_ROOT
+#define SSH_SFTP_ROOT   "/srv"
+#endif
+
 /* Counters for the summary/DoD. */
 uint32_t ssh_server_sessions(void);   /* accepted TCP sessions            */
 uint32_t ssh_server_auth_ok(void);    /* successful authentications       */
 uint32_t ssh_server_commands(void);   /* executed shell commands          */
+
+/* Sessions that opened the SFTP subsystem (0 when SFTP is compiled out).
+ * SFTP shares this very server: same port, same handshake, same credentials;
+ * only the channel request differs ("subsystem sftp" vs "shell"). */
+uint32_t ssh_server_sftp_sessions(void);
 
 
 #endif /* RTOS_NET_SSH_SERVER_H */
