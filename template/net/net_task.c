@@ -229,10 +229,18 @@ void net_task_entry(void *arg)
 
     /* --- SSH server (wolfSSH port 22) --- */
     int ss = ssh_server_start();
-    if (ss == 0)
+    if (ss == 0) {
         printf("[net] SSH server listening on port %u (ssh %s@%u.%u.%u.%u  password: %s)\n",
                (unsigned)SSH_SERVER_PORT, SSH_USER,
                NET_IP_ADDR0, NET_IP_ADDR1, NET_IP_ADDR2, NET_IP_ADDR3, SSH_PASS);
+        /* SFTP rides on the SAME port/handshake/credentials as the shell: the
+         * client just requests the "sftp" subsystem instead of a shell. */
+        printf("[net] SFTP enabled on the same port %u (sftp %s@%u.%u.%u.%u), "
+               "confined to %s\n",
+               (unsigned)SSH_SERVER_PORT, SSH_USER,
+               NET_IP_ADDR0, NET_IP_ADDR1, NET_IP_ADDR2, NET_IP_ADDR3,
+               SSH_SFTP_ROOT);
+    }
     else
         printf("[net] ERROR: SSH server startup failed (code %d).\n", ss);
 
