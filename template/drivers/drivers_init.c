@@ -32,6 +32,7 @@
 #include "drivers_init.h"
 #include "usb/kbd_service.h"
 #include "../fs/fs_mount.h"
+#include "../fs/sftp_jail.h"
 
 static unsigned g_status;
 
@@ -44,6 +45,12 @@ unsigned drivers_init(void)
     /* --- micro-SD card + PERMANENT FAT mount (volume 0:) --- */
     if (fs_mount_init() == 0)
         ok |= DRV_OK_FS;
+
+    /* --- SFTP jail root (/srv -> 0:/srv) ---
+     * Created here, right after the volume is mounted, so the SSH server can
+     * simply query oros_sftp_jail_ready() when a client asks for the sftp
+     * subsystem. A failure only disables SFTP, never the rest of the system. */
+    (void)oros_sftp_jail_init();
 
     /* --- USB-A: EHCI + OHCI controllers, HOT-PLUG keyboard service ---
      * Comes up EVEN IF no keyboard is plugged in: the service then scans
