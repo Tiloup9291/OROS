@@ -39,7 +39,11 @@
 /* ------------------------------------------------------------------ */
 #define CFG_MAX_THREADS         32u          /* max number of static threads */
 #define CFG_NUM_PRIORITIES      32u          /* 0 = highest priority */
-#define CFG_THREAD_STACK_SIZE   (16u * 1024u)/* stack per thread: 16 KiB */
+/* Stack per thread: 32 KiB. Raised from 16 KiB for the SFTP service: the
+ * wolfSSH path canonicalization/confinement helpers (GetAndCleanPath,
+ * SFTP_RecvRealPath) stack several WOLFSSH_MAX_FILENAME buffers at once, and
+ * the FatFs FIL object embeds a FF_MAX_SS (512 B) sector window. */
+#define CFG_THREAD_STACK_SIZE   (32u * 1024u)/* stack per thread: 32 KiB */
 #define CFG_IDLE_STACK_SIZE     (4u * 1024u) /* idle task stack */
 
 /* ------------------------------------------------------------------ */
