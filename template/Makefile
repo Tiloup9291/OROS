@@ -96,6 +96,7 @@ OBJ  = $(BUILD)/start.o \
        $(BUILD)/ffsystem.o \
        $(BUILD)/diskio.o \
        $(BUILD)/fs_mount.o \
+       $(BUILD)/sftp_jail.o \
        $(LWIP_OBJ) \
        $(BUILD)/lwip_sys_arch.o \
        $(BUILD)/netif_r8152.o \
@@ -261,6 +262,13 @@ $(BUILD)/diskio.o: lib/fatfs/diskio.c | $(BUILD)
 $(BUILD)/fs_mount.o: fs/fs_mount.c | $(BUILD)
 	$(CC) $(CFLAGS) $(MMU_DEFS) -c $< -o $@
 
+# ---- FS: SFTP chroot layer (/srv -> 0:/srv) ----
+# Translates and confines every path wolfSSH's SFTP server hands to FatFs.
+# Pulled in by the WOLFSSH_FATFS macros of lib/wolfssh/wolfssh/port.h when
+# OROS_SFTP_JAIL is defined (lib/wolfssl/user_settings.h).
+$(BUILD)/sftp_jail.o: fs/sftp_jail.c | $(BUILD)
+	$(CC) $(CFLAGS) $(MMU_DEFS) -c $< -o $@
+
 
 # ---- lwIP (upstream BSD sources, NO_SYS=1 mode) ----------------
 # Core subset sufficient for IPv4 + ARP + ICMP + UDP + TCP + RAW in
@@ -394,7 +402,10 @@ $(BUILD)/wc_%.o: $(WOLFCRYPT_SRCDIR)/%.c | $(BUILD)
 
 # wolfSSH: core of the SSH server (ssh/internal/io/log/misc/port/keygen).
 WOLFSSH_SRCDIR = lib/wolfssh/src
-WOLFSSH_NAMES = ssh internal io log misc port keygen ossh
+# wolfsftp: SFTP subsystem, served on the SAME port 22 as the SSH shell.
+# Its filesystem port (WOLFSSH_FATFS) binds to lib/fatfs through the OROS
+# chroot layer (fs/sftp_jail.c) -> see lib/wolfssl/user_settings.h.
+WOLFSSH_NAMES = ssh internal io log misc port keygen ossh wolfsftp
 WOLFSSH_OBJ = $(patsubst %,$(BUILD)/ws_%.o,$(WOLFSSH_NAMES))
 
 $(BUILD)/ws_%.o: $(WOLFSSH_SRCDIR)/%.c | $(BUILD)
