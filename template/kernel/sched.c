@@ -52,7 +52,9 @@ static inline uint32_t cur_core(void)
 static tcb_t   g_tcb[CFG_MAX_THREADS];
 static uint8_t g_stacks[CFG_MAX_THREADS][CFG_THREAD_STACK_SIZE]
                    __attribute__((aligned(16)));
-static uint32_t g_nthreads;
+/* volatile: the table can be extended while the scheduler is already
+ * running (Core2 creates its service threads after sched_start()). */
+static volatile uint32_t g_nthreads;
 
 /* Current thread PER CORE (index in g_tcb, or 0xFFFFFFFF = none). */
 static volatile uint32_t g_current[CFG_NUM_CORES];
@@ -90,7 +92,11 @@ int thread_create_on(const char *name, thread_entry_t entry, void *arg,
     if (g_nthreads >= CFG_MAX_THREADS || core >= CFG_NUM_CORES)
         return -1;
 
-    uint32_t id = g_nthreads++;
+    /* The slot is filled BEFORE g_nthreads is incremented: a thread may be
+     * created while the scheduler is already running (Core2 service
+     * threads). Publishing the counter too early would expose to
+     * pick_next() a TCB whose SP is not built yet -> branch to sp=0. */
+    uint32_t id = g_nthreads;
     tcb_t *t = &g_tcb[id];
 
     t->id         = id;
@@ -98,7 +104,7 @@ int thread_create_on(const char *name, thread_entry_t entry, void *arg,
     t->priority   = priority;
     t->base_prio  = priority;
     t->core       = core;
-    t->state      = THREAD_READY;
+    t->state      = THREAD_UNUSED;   /* not schedulable yet: see below */
     t->stack_base = g_stacks[id];
     t->stack_size = CFG_THREAD_STACK_SIZE;
 
@@ -118,6 +124,14 @@ int thread_create_on(const char *name, thread_entry_t entry, void *arg,
     tf[TF_OFF_SPSR / 8] = SPSR_EL1H_IRQON;
 
     t->sp = sp_top;
+
+    /* Publish: the TCB is complete, mark it schedulable THEN extend the
+     * table (barrier to enforce ordering against the other cores and the
+     * scheduling IRQ). */
+    t->state = THREAD_READY;
+    __asm__ volatile("dmb ish" ::: "memory");
+    g_nthreads = id + 1u;
+
     return (int)id;
 }
 
