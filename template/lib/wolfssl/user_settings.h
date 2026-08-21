@@ -135,6 +135,7 @@ extern long wc_rtos_time(long *t);
 #define WOLFSSL_SP_MATH_ALL        /* complete multi-precision SP engine */
 #define WOLFSSL_HAVE_SP_ECC
 #define WOLFSSL_SP_ARM64           /* AArch64 assembly/optimization (Cortex-A53) */
+#define WOLFSSL_SP_ARM64_ASM       /* native A64 assembly backend (sp_arm64.c) */
 #define SP_WORD_SIZE 64
 /* GCC AArch64 supports __int128: required by sp_c64.c (nistp256 in 64-bit). */
 #define HAVE___UINT128_T
