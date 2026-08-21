@@ -51,13 +51,23 @@ typedef enum {
  *   offset 0x00 : x0..x30 (31 regs) + 1 padding (xzr)  -> 32 * 8 = 256 bytes
  *   offset 0x100: ELR_EL1 (PC)                          -> +8
  *   offset 0x108: SPSR_EL1 (state)                      -> +8
- *   total = 272 bytes
+ *   offset 0x110: v0..v31 (SIMD/NEON registers)         -> 32 * 16 = 512 B
+ *   offset 0x310: FPCR (FP control word)                -> +8
+ *   offset 0x318: FPSR (FP status word)                 -> +8
+ *   total = 800 bytes
+ *
+ * The NEON registers are saved/restored on every context switch so that
+ * several threads pinned to the same core can all use SIMD (e.g. NEON
+ * memcpy, wolfSSL crypto) without corrupting each other.
  */
-#define TRAPFRAME_SIZE     272u
+#define TRAPFRAME_SIZE     800u
 #define TF_OFF_X0          0u
 #define TF_OFF_X30         (30u * 8u)
 #define TF_OFF_ELR         (32u * 8u)   /* 256 */
 #define TF_OFF_SPSR        (33u * 8u)   /* 264 */
+#define TF_OFF_NEON        (34u * 8u)                    /* 272: v0..v31   */
+#define TF_OFF_FPCR        (TF_OFF_NEON + 32u * 16u)     /* 784 (8-aligned)*/
+#define TF_OFF_FPSR        (TF_OFF_FPCR + 8u)            /* 792            */
 
 /* Task control block (TCB). */
 typedef struct tcb {
