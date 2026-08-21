@@ -393,7 +393,7 @@ WOLFCRYPT_SRCDIR = lib/wolfssl/wolfcrypt/src
 WOLFCRYPT_NAMES = random sha sha256 sha512 md5 hmac aes ecc ed25519 curve25519 \
                   ge_operations fe_operations hash asn coding kdf chacha \
                   poly1305 chacha20_poly1305 wc_encrypt signature memory \
-                  wolfmath sp_int sp_c64 logging error wc_port pwdbased dh \
+                  wolfmath sp_int sp_arm64 logging error wc_port pwdbased dh \
                   dsa
 WOLFCRYPT_OBJ = $(patsubst %,$(BUILD)/wc_%.o,$(sort $(WOLFCRYPT_NAMES)))
 
