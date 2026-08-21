@@ -183,6 +183,9 @@ void kmain(void)
     uart_puts("\n");
 
     mmu_enable();
+    /* The MMU is on: LDAXR/STXR now work, so the console TX lock can be
+     * armed. It serializes the Core2 service threads and the other cores. */
+    uart_tx_lock_enable();
     uart_puts("[boot] MMU enabled\n");
 
     install_vectors();
