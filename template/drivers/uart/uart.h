@@ -39,6 +39,14 @@ void uart_puts(const char *s);
 /* Emits a buffer of 'len' raw bytes (used by the newlib _write stub). */
 size_t uart_write(const char *buf, size_t len);
 
+/* Arms the TX spinlock that serializes concurrent writers (Core2 runs
+ * several service threads, and the other cores may print too).
+ * MUST be called by kmain() right AFTER mmu_enable(): the lock relies on
+ * LDAXR/STXR, which need the MMU on (see kernel/sync.h). Until then the
+ * output stays unlocked, which is safe because the early boot is
+ * single-core and strictly sequential. */
+void uart_tx_lock_enable(void);
+
 /* ------------------------------------------------------------------ */
 /* Buffered interrupt-driven RX                           */
 /* ------------------------------------------------------------------ */
