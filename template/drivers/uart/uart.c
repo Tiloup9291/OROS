@@ -30,6 +30,7 @@
 
 #include "uart.h"
 #include <stdint.h>
+#include "../../kernel/sync.h"   /* SMP spinlock: TX serialization */
 
 /* ------------------------------------------------------------------ */
 /* Lock-free RX ring buffer (SPSC) — shared by both controllers        */
@@ -104,7 +105,7 @@ void uart_init(void)
     /* QEMU/U-Boot have already configured the PL011. */
 }
 
-void uart_putc(char c)
+static void uart_tx_raw(char c)
 {
     while (mmio_read32(UART_BASE + PL011_FR) & PL011_FR_TXFF)
         ; /* wait until the TX FIFO is no longer full */
@@ -166,7 +167,7 @@ void uart_init(void)
      * idempotent init, the divisor is not reprogrammed. */
 }
 
-void uart_putc(char c)
+static void uart_tx_raw(char c)
 {
     while (!(mmio_read32(UART_BASE + DW_LSR) & LSR_THRE))
         ; /* wait until THR is ready */
@@ -199,21 +200,77 @@ void uart_rx_isr(void)
 
 /* --------- Common part (controller-independent) --------- */
 
+/*
+ * Transmit (TX) lock. Core2 now runs SEVERAL threads writing to the console
+ * (network through printf, klog drain, UART shell), and the other cores may
+ * print too: without serialization the characters of two messages interleave
+ * on the serial line.
+ *
+ * The lock is taken per MESSAGE (not per character) in uart_puts() /
+ * uart_write(): a whole line is emitted as one block, which keeps the
+ * console readable. It is NOT recursive, so the internal helpers call
+ * uart_tx_raw() (raw, unlocked output) and never uart_putc().
+ *
+ * Deadlock safety: uart_rx_isr() (IRQ context) only touches the lock-free
+ * RX ring and never takes this lock.
+ *
+ * BOOT CONSTRAINT: the spinlock uses LDAXR/STXR, and those exclusive
+ * instructions require the MMU to be ON with Normal Inner-Shareable memory
+ * (see kernel/sync.h). kmain() prints several lines BEFORE mmu_enable(),
+ * so the lock must stay disabled until then, otherwise STXR never succeeds
+ * and the very first uart_puts() spins forever (silent hang at boot).
+ * Locking is armed by uart_tx_lock_enable(), called right after the MMU is
+ * up. Before that point the boot is strictly sequential and single-core,
+ * so no serialization is needed anyway.
+ */
+static spinlock_t g_tx_lock = SPINLOCK_INIT;
+static volatile int g_tx_lock_ready;   /* 0 = MMU off: do not use the lock */
+
+void uart_tx_lock_enable(void)
+{
+    g_tx_lock_ready = 1;
+}
+
+static inline void uart_tx_acquire(void)
+{
+    if (g_tx_lock_ready)
+        spin_lock(&g_tx_lock);
+}
+
+static inline void uart_tx_release(void)
+{
+    if (g_tx_lock_ready)
+        spin_unlock(&g_tx_lock);
+}
+
+/* Emits one character, converting '\n' to CRLF (lock already held). */
+static inline void uart_tx_cooked(char c)
+{
+    if (c == '\n')
+        uart_tx_raw('\r');   /* CRLF for serial terminals */
+    uart_tx_raw(c);
+}
+
+void uart_putc(char c)
+{
+    uart_tx_acquire();
+    uart_tx_raw(c);
+    uart_tx_release();
+}
+
 void uart_puts(const char *s)
 {
-    while (*s) {
-        if (*s == '\n')
-            uart_putc('\r');   /* CRLF for serial terminals */
-        uart_putc(*s++);
-    }
+    uart_tx_acquire();
+    while (*s)
+        uart_tx_cooked(*s++);
+    uart_tx_release();
 }
 
 size_t uart_write(const char *buf, size_t len)
 {
-    for (size_t i = 0; i < len; i++) {
-        if (buf[i] == '\n')
-            uart_putc('\r');
-        uart_putc(buf[i]);
-    }
+    uart_tx_acquire();
+    for (size_t i = 0; i < len; i++)
+        uart_tx_cooked(buf[i]);
+    uart_tx_release();
     return len;
 }
