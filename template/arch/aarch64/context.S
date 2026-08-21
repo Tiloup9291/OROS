@@ -22,8 +22,10 @@
  * thread and do eret to its entry point. Used once per
  * sched_start() to start scheduling. Never come back.
  *
- * Trap frame must have the same layout of vectors.S :
- *   [x0..x30, pad][ELR_EL2][SPSR_EL2], total: 272 bytes.
+ * Trap frame must have the same layout of vectors.S (see TRAPFRAME_SIZE) :
+ *   [x0..x30, pad][ELR_EL1][SPSR_EL1][v0..v31][FPCR][FPSR], total: 800 bytes.
+ * The initial NEON/FPCR/FPSR values are zero (reset state): the frame is
+ * zeroed by thread_create_on(), so there is nothing to restore here.
  */
 
     .section .text
@@ -53,7 +55,7 @@ cpu_start_first:
     ldp     x26, x27, [sp, #16 * 13]
     ldp     x28, x29, [sp, #16 * 14]
     ldr     x30,      [sp, #16 * 15]
-    add     sp, sp, #272
+    add     sp, sp, #800
 
     eret
 
