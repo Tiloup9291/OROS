@@ -35,9 +35,10 @@
     .globl vector_table
 vector_table:
 
-/* Save x0..x30 + ELR_EL1 + SPSR_EL1 on stack (272 bytes, aligned 16). */
+/* Save x0..x30 + ELR_EL1 + SPSR_EL1 + v0..v31 + FPCR/FPSR on stack
+ * (800 bytes, aligned 16: must stay equal to TRAPFRAME_SIZE). */
 .macro SAVE_CONTEXT
-    sub     sp, sp, #272
+    sub     sp, sp, #800
     stp     x0,  x1,  [sp, #16 * 0]
     stp     x2,  x3,  [sp, #16 * 1]
     stp     x4,  x5,  [sp, #16 * 2]
@@ -57,13 +58,55 @@ vector_table:
     mrs     x9,  elr_el1
     mrs     x10, spsr_el1
     stp     x9,  x10, [sp, #16 * 16]
+    /* v0..v31: offset 272 (=16*17) .. 272+512 = 784. */
+    stp     q0,  q1,  [sp, #16 * 17]
+    stp     q2,  q3,  [sp, #16 * 19]
+    stp     q4,  q5,  [sp, #16 * 21]
+    stp     q6,  q7,  [sp, #16 * 23]
+    stp     q8,  q9,  [sp, #16 * 25]
+    stp     q10, q11, [sp, #16 * 27]
+    stp     q12, q13, [sp, #16 * 29]
+    stp     q14, q15, [sp, #16 * 31]
+    stp     q16, q17, [sp, #16 * 33]
+    stp     q18, q19, [sp, #16 * 35]
+    stp     q20, q21, [sp, #16 * 37]
+    stp     q22, q23, [sp, #16 * 39]
+    stp     q24, q25, [sp, #16 * 41]
+    stp     q26, q27, [sp, #16 * 43]
+    stp     q28, q29, [sp, #16 * 45]
+    stp     q30, q31, [sp, #16 * 47]
+    /* FPCR / FPSR: offsets 784 and 792 (must be 8-aligned for str/ldr x). */
+    mrs     x9,  fpcr
+    mrs     x10, fpsr
+    str     x9,  [sp, #784]
+    str     x10, [sp, #792]
 .endm
 
-/* Restore ELR_EL1 + SPSR_EL1 + x0..x30 from stack. */
+/* Restore ELR_EL1 + SPSR_EL1 + x0..x30 + v0..v31 + FPCR/FPSR from stack. */
 .macro RESTORE_CONTEXT
     ldp     x9,  x10, [sp, #16 * 16]
     msr     elr_el1,  x9
     msr     spsr_el1, x10
+    ldp     q30, q31, [sp, #16 * 47]
+    ldp     q28, q29, [sp, #16 * 45]
+    ldp     q26, q27, [sp, #16 * 43]
+    ldp     q24, q25, [sp, #16 * 41]
+    ldp     q22, q23, [sp, #16 * 39]
+    ldp     q20, q21, [sp, #16 * 37]
+    ldp     q18, q19, [sp, #16 * 35]
+    ldp     q16, q17, [sp, #16 * 33]
+    ldp     q14, q15, [sp, #16 * 31]
+    ldp     q12, q13, [sp, #16 * 29]
+    ldp     q10, q11, [sp, #16 * 27]
+    ldp     q8,  q9,  [sp, #16 * 25]
+    ldp     q6,  q7,  [sp, #16 * 23]
+    ldp     q4,  q5,  [sp, #16 * 21]
+    ldp     q2,  q3,  [sp, #16 * 19]
+    ldp     q0,  q1,  [sp, #16 * 17]
+    ldr     x9,  [sp, #784]
+    ldr     x10, [sp, #792]
+    msr     fpcr, x9
+    msr     fpsr, x10
     ldp     x0,  x1,  [sp, #16 * 0]
     ldp     x2,  x3,  [sp, #16 * 1]
     ldp     x4,  x5,  [sp, #16 * 2]
@@ -80,7 +123,7 @@ vector_table:
     ldp     x26, x27, [sp, #16 * 13]
     ldp     x28, x29, [sp, #16 * 14]
     ldr     x30,      [sp, #16 * 15]
-    add     sp, sp, #272
+    add     sp, sp, #800
 .endm
 
 .macro VEC_SYNC index
