@@ -154,13 +154,20 @@ static void uart_put_u64(uint64_t v)
     while (i--) uart_putc(tmp[i]);
 }
 
-uint32_t klog_drain_to_uart(void)
+uint32_t klog_drain_budgeted(uint32_t budget, uint32_t *emitted)
 {
-    uint32_t emitted = 0;
+    uint32_t emitted_count = 0;
+
+    if (emitted != NULL)
+        *emitted = 0;
 
     for (uint32_t c = 0; c < CFG_NUM_CORES; c++) {
         log_ring_t *r = &g_rings[c];
         while (r->tail != r->head) {
+            /* Budget exhausted: stop here and hand control back. */
+            if (budget != 0 && emitted_count >= budget)
+                break;
+
             log_entry_t *e = &r->buf[r->tail];
             /* Format: [ts core] message */
             uart_puts("[");
@@ -173,10 +180,21 @@ uint32_t klog_drain_to_uart(void)
 
             __asm__ volatile("dmb ish" ::: "memory");
             r->tail = (r->tail + 1u) & RING_MASK;
-            emitted++;
+            emitted_count++;
         }
+        /* Budget exhausted: do not walk the remaining rings either. */
+        if (budget != 0 && emitted_count >= budget)
+            break;
     }
-    return emitted;
+
+    if (emitted != NULL)
+        *emitted = emitted_count;
+    return emitted_count;
+}
+
+uint32_t klog_drain_to_uart(void)
+{
+    return klog_drain_budgeted(0, NULL);   /* budget 0 = unlimited */
 }
 
 uint32_t klog_dropped(void)
